@@ -26,24 +26,21 @@ MatrixLib::Matrix<T>  query_matrix(const char * cmd_argument){
 
 int main(const int argc, const char * argv[]){
 	try {
-		MatrixLib::Matrix<int> 
+		MatrixLib::Matrix<int>
 			a = query_matrix<int>(argc > 1 ? argv[1] : nullptr),
 			b = query_matrix<int>(argc > 2 ? argv[2] : nullptr);
 
-		double start, end;
-		std::cout << "Start of calculation" << std::endl;
+		int mode = (argc > 3) ? atoi(argv[3]) : 0;
+		if (mode < 0 || mode >= MatrixLib::Operations::MULTIPLE_CALCULATION_MODE_NAME.size())
+			throw std::exception("Invalid argument mode");
+
 		
-		start = omp_get_wtime();
-		a * b;
-		end = omp_get_wtime();
 
-		std::cout << "Single thread: " << (end - start) << std::endl;
+		double time;
+		MatrixLib::Matrix<int> out = MatrixLib::Operations::multiple<int>(&a, &b, (MatrixLib::Operations::MULTIPLE_CALCULATION_MODE)mode, time);
 
-		start = omp_get_wtime();
-		MatrixLib::Operations::multiple<int>(&a, &b, false);
-		end = omp_get_wtime();
+		std::cout << time << std::endl;
 
-		std::cout << "Multi-thread: " << (end - start) << std::endl;
 	}
 	catch (std::exception &e){
 		std::cerr << "ERROR: " << e.what() << std::endl;

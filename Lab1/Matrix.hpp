@@ -2,20 +2,21 @@
 #include <iostream>
 #include <vector>
 #include "Exceptions.h"
+#include <omp.h>
+
 
 namespace MatrixLib {
 	template <class T>
 	class Matrix
 	{
 	public:
-		typedef std::vector<T> values_holder;
-		typedef std::shared_ptr<values_holder> values_ptr;
+		typedef T* values_holder;
 	protected:
 		long m_n, m_m;
-		values_ptr m_values;
+		values_holder m_values;
 	public:
 		Matrix(){
-			m_values = values_ptr();
+			m_values = nullptr;
 			m_n = m_m = 0;
 		}
 
@@ -23,9 +24,7 @@ namespace MatrixLib {
 			m_n = n;
 			m_m = m;
 
-			m_values = values_ptr(new values_holder());
-			values_holder * data_vector = m_values.get();
-			data_vector->resize(m_n * m_m);
+			m_values = (T*)calloc(n * m, sizeof(T));
 		}
 
 		Matrix(istream & input){
@@ -34,32 +33,44 @@ namespace MatrixLib {
 			if (m_m <= 0 || m_n <= 0)
 				throw Exceptions::MatrixSyntaxException();
 
-			m_values = values_ptr(new values_holder());
-			values_holder * data_vector = m_values.get();
-			data_vector->resize(m_n * m_m);
+			m_values = (T*)calloc(m_n * m_m, sizeof(T));
 
 			T temp;
 
 			for (int ni = 0; ni < m_n; ni++)
 				for (int mi = 0; mi < m_m; mi++) {
 					input >> temp;
-					data_vector->at(ni * m_m + mi) = temp;
+					m_values[ni * m_m + mi] = temp;
 				}
 
 		}
 
-		~Matrix(){}
+		Matrix(const Matrix<T> & const input){
+			long count_of_elements = input.getM() * input.getN();
+			void * new_holder = (T*)calloc(count_of_elements, sizeof(T));
+			memcpy(new_holder, input.m_values, sizeof(T) * count_of_elements);
+			m_values = (T*)new_holder;
+			m_m = input.m_m;
+			m_n = input.m_n;
+		}
+
+		~Matrix(){
+			if (m_values != nullptr)
+				free((void*)m_values);
+		}
 
 
 		const long getN() const { return m_n; }
 		const long getM() const { return m_m; }
 
-		virtual T const& operator[](long index) const
+		T const& operator[](long index) const
 		{
-			if (m_m == 0 || m_n == 0 || m_m * m_n <= index)
-				throw std::out_of_range("Index out of range");
+			return m_values[index];
+		}
 
-			return m_values.get()->at(index);
+		T const& at(long index) const
+		{
+			return m_values[index];
 		}
 		
 		friend ostream &operator<<(ostream &out, const Matrix<T> & matrix)
@@ -97,27 +108,32 @@ namespace MatrixLib {
 	class MutableMatrix : public Matrix<T>
 	{
 	public:
-		MutableMatrix() : Matrix<T> {}
+		MutableMatrix() : Matrix<T> {
+		}
 
-		MutableMatrix(long n, long m) : Matrix<T>(n, m){}
+		MutableMatrix(long n, long m) : Matrix<T>(n, m){
+		}
 
-		MutableMatrix(istream & input) : Matrix<T>(input){}
+		MutableMatrix(istream & input) : Matrix<T>(input){
+		}
 
 		MutableMatrix(const Matrix<T> & const input) : Matrix<T>(input){
 			// Copy matrix
 			if (m_values != nullptr){
-				values_holder * src = m_values.get();
-				values_holder * new_holder = new values_holder(*src);
-				m_values = values_ptr(new_holder);
+				long count_of_elements = input.getM() * input.getN();
+				void * new_holder = (T*)calloc(count_of_elements, sizeof(T));
+				memcpy(new_holder, m_values, sizeof(T) * count_of_elements);
+				m_values = (T*)new_holder;
 			}
 		}
 
-		virtual T & operator[](long index)
-		{
-			if (m_m == 0 || m_n == 0 || m_m * m_n <= index)
-				throw std::out_of_range("Index out of range");
+		T & at(long index){
+			return m_values[index];
+		}
 
-			return m_values.get()->at(index);
+		T & operator[](long index)
+		{
+			return m_values[index];
 		}
 
 		friend istream &operator>>(istream  &input, MutableMatrix<T> &matrix)
@@ -129,8 +145,46 @@ namespace MatrixLib {
 	
 	namespace Operations {
 
+		enum MULTIPLE_CALCULATION_MODE {
+			NONE,
+			DEFAULT,
+			STATIC,
+			STATIC_10,
+			STATIC_100,
+			STATIC_1000,
+			GUIDED_10,
+			GUIDED_100,
+			GUIDED_1000,
+			DYNAMIC_10,
+			DYNAMIC_100
+		};
+
+		std::vector<std::string> MULTIPLE_CALCULATION_MODE_NAME = {
+			"None", 
+			"Default",
+			"Static",
+			"Static 10",
+			"Static 100",
+			"Static 1000",
+			"Guided 10",
+			"Guided 100",
+			"Guided 1000",
+			"Dynamic 10",
+			"Dynamic 100"
+		};
+
+
 		template <class T>
-		static Matrix<T> multiple(const Matrix<T> * const a, const Matrix<T> * const b, bool use_open_mp = true){
+		inline void calculate_multiple_one_line(MutableMatrix<T> & result_matrix, const Matrix<T> * const a, const Matrix<T> * const b, long long & ijk, long long & m, long long &r){
+			int i = ijk / (m * r);
+			int j = (ijk / r) % m;
+			int k = ijk % r;
+
+			result_matrix[i * m + j] = result_matrix[i * m + j] + a->at(i * r + k) * b->at(k * r + j);
+		}
+
+		template <class T>
+		static MutableMatrix<T> multiple(const Matrix<T> * const a, const Matrix<T> * const b, MULTIPLE_CALCULATION_MODE mode, double & time){
 			if (a->getM() != b->getN())
 				throw Exceptions::MatrixSizeMismatchException();
 
@@ -138,36 +192,97 @@ namespace MatrixLib {
 			if (a->getM() == 0 || a->getN() == 0 || b->getN() == 0 || b->getM() == 0)
 				throw Exceptions::MatrixSizeMismatchException();
 
-			long n = a->getN(), m = b->getM(), r = a->getM();
+			long long n = a->getN(), m = b->getM(), r = a->getM();
 			MutableMatrix<T> result_matrix = MutableMatrix<T>(n, m);
 
 
-			long i, j, k;
+			long long i, j, k;
 			long long ijk;
+			long long ijk_max = n * m * r;
 
-			if (use_open_mp){
+			double start, end;
+			start = omp_get_wtime();
+			if (mode == DEFAULT){
+				#pragma omp parallel for
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
+				{
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == STATIC){
 				#pragma omp parallel for schedule(static)
-				for (long long ijk = 0; ijk < n * m * r; ijk++)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
 				{
-					long i = ijk / (m * r);
-					long j = (ijk / r) % m;
-					long k = ijk % r;
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == STATIC_10){
+				#pragma omp parallel for schedule(static, 10)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
+				{
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == STATIC_100){
+				#pragma omp parallel for schedule(static, 100)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
+				{
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == STATIC_1000){
+				#pragma omp parallel for schedule(static, 1000)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
+				{
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == GUIDED_10){
+				#pragma omp parallel for schedule(guided, 10)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
+				{
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == GUIDED_100){
+				#pragma omp parallel for schedule(guided, 100)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
+				{
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == GUIDED_1000){
+				#pragma omp parallel for schedule(guided, 1000)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
+				{
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == DYNAMIC_10){
+				#pragma omp parallel for schedule(dynamic, 10)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
+				{
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == DYNAMIC_100){
+				#pragma omp parallel for schedule(dynamic, 100)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
+				{
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
+				}
+			}
+			else if (mode == NONE) {
 
-					result_matrix[i * m + j] = result_matrix[i * m + j] + a->operator[](i * r + k) * b->operator[](k * r + j);
-				}
-			}
-			else {
-				for (i = 0; i < n; i++)
+				for (long long ijk = 0; ijk < ijk_max; ijk++)
 				{
-					for (j = 0; j < m; j++)
-					{
-						for (k = 0; k < r; k++)
-						{
-							result_matrix[i * m + j] = result_matrix[i * m + j] + a->operator[](i * r + k) * b->operator[](k * r + j);
-						}
-					}
+					calculate_multiple_one_line(result_matrix, a, b, ijk, m, r);
 				}
 			}
+			else
+				throw std::exception("Invalid argument for mode");
+			end = omp_get_wtime();
+			time = end - start;
 
 			return result_matrix;
 		}
