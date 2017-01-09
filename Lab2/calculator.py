@@ -12,7 +12,7 @@ def calc_equation(variable_index:int, equations:list, last_values:list) -> float
 
 def need_continue_calculation(old_variables:list, new_variables:list, threshold:float) -> bool:
     for a, b in zip(old_variables, new_variables):
-        if math.fabs(a - b) > threshold:
+        if math.fabs(a * a - b * b) > threshold * threshold:
             return True
     return False
 
