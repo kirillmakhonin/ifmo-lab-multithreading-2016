@@ -38,7 +38,7 @@ class profiler:
             print(self)
 
 
-def lab2args(load_data:bool=False):
+def lab2args(load_data:bool=False) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Lab 2. YAKOBY equations")
     parser.add_argument('coefficient_file', help='File with equation coefficients', type=str)
     parser.add_argument('start_equation_result_file', help='File with equation results file', type=str)
@@ -62,7 +62,7 @@ def lab2args(load_data:bool=False):
     return args
 
 
-def lab2out(data:tuple, target_file_path:str):
+def lab2out(data:tuple, target_file_path:str) -> None:
     np.savetxt(target_file_path, data, fmt='%.10f')
 
 
