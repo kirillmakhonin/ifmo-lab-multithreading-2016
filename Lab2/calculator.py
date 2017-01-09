@@ -17,7 +17,7 @@ def need_continue_calculation(old_variables:list, new_variables:list, threshold:
     return False
 
 
-def work()->None:
+def work() -> None:
     try:
         rank = None
         comm = MPI.COMM_WORLD # type: MPI.Comm
