@@ -1,0 +1,1 @@
+mpiexec -n 8 python calculator.py datasets/in1.txt datasets/out1.txt
