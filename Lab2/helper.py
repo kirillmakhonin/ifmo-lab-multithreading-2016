@@ -54,8 +54,14 @@ def lab2args(load_data:bool=False) -> argparse.Namespace:
         raise Exception("Start equation results file not found: %s" % args.start_equation_result_file)
 
     if load_data:
-        args.coefficients = np.genfromtxt(args.coefficient_file, delimiter=' ')
-        args.start_equation_results = np.genfromtxt(args.start_equation_result_file, delimiter=' ')
+        try:
+            args.coefficients = np.genfromtxt(args.coefficient_file, delimiter=' ')
+        except Exception as coefficients_load_exc:
+            raise Exception("Cannot load coefficients file: %s" % coefficients_load_exc)
+        try:
+            args.start_equation_results = np.genfromtxt(args.start_equation_result_file, delimiter=' ')
+        except Exception as start_results_load_exc:
+            raise Exception("Cannot load start results file file: %s" % start_results_load_exc)
 
     args.threshold = math.fabs(args.threshold)
 
@@ -80,8 +86,8 @@ def distribute_tasks_per_processes(num_of_tasks:int, num_of_processes:int) -> tu
     for i in range(need_processes):
         start_task = tasks_per_process * i
         end_task = tasks_per_process * (i + 1) - 1
-        if end_task > num_of_tasks:
-            end_task = num_of_tasks
+        if end_task >= num_of_tasks:
+            end_task = num_of_tasks - 1
         ret.append((start_task, end_task))
 
     if need_processes < num_of_processes:

@@ -1,1 +1,0 @@
-mpiexec -n 5 python ../calculator.py 1.coefficients 1.init 0.00000005 1.out

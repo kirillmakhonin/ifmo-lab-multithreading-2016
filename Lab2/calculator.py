@@ -34,6 +34,7 @@ def work() -> None:
 
         if rank == 0:
             print("Common startup info is %s" % (startup_info,))
+            sys.stdout.flush()
 
         common_info = {'finish': 0}  # first - need finish flag
         mine_startup_info = startup_info[rank - 1] if rank != 0 else None
@@ -42,6 +43,7 @@ def work() -> None:
         with profiler("Full proc task at %s" % MPI.Get_processor_name()):
             while common_info['finish'] != 1:
                 # Next. Calculate
+
                 if rank != 0:
                     results = []
                     if mine_startup_info is None:
