@@ -1,1 +1,0 @@
-mpiexec -n 5 python calculator.py datasets/coefficients.csv datasets/start.csv 0.00000005 datasets/out.csv
